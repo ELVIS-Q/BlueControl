@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "749650104159",
+    "project_id": "personasnovidentes",
+    "storage_bucket": "personasnovidentes.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:749650104159:android:6dd25c2f3e1e972a8430ea",
+        "android_client_info": {
+          "package_name": "com.personal.firebaseapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBi3dDC6HAD05F-x6onko0hpMyL1HLdSE4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

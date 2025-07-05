@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primaryColor">#4CAF50</color>
+    <color name="primaryDarkColor">#3700B3</color>
+    <color name="accentColor">#FFFFFFFF</color>
+    <color name="textColorPrimary">#212121</color>
+    <color name="textColorSecondary">#757575</color>
+    <color name="errorColor">#B00020</color>
+
+    <color name="primary">#2196F3</color> <!-- azul celeste -->
+    <color name="primary_dark">#1976D2</color>
+    <color name="accent">#4CAF50</color> <!-- verde menta -->
+    <color name="text_primary">#212121</color> <!-- gris oscuro -->
+    <color name="text_secondary">#757575</color> <!-- gris medio -->
+</resources>
