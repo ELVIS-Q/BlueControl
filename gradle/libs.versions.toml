@@ -1,16 +1,16 @@
 [versions]
-agp = "8.9.1"
+agp = "8.4.1" # versión estable actual para Android Gradle Plugin
 junit = "4.13.2"
-junitVersion = "1.2.1"
-espressoCore = "3.6.1"
-appcompat = "1.7.0"
-material = "1.12.0"
-activity = "1.10.1"
-constraintlayout = "2.2.1"
-media3Common = "1.7.1"
-playServicesLocation = "21.3.0"
-coreKtx = "1.12.0"
-recyclerview = "1.4.0"
+junitVersion = "1.1.5"
+espressoCore = "3.5.1"
+appcompat = "1.6.1" # ✅ estable y muy compatible
+material = "1.9.0"  # ✅ estable
+activity = "1.8.2"
+constraintlayout = "2.1.4" # ✅ mejor usar esta que la 2.2.1 (beta)
+media3Common = "1.2.1" # ✅ última estable compatible
+playServicesLocation = "21.0.1" # ✅ estable
+coreKtx = "1.10.1"
+recyclerview = "1.3.1"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }

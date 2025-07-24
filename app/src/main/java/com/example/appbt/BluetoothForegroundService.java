@@ -29,12 +29,18 @@ import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationCallback;
 import com.google.android.gms.location.LocationServices;
 import com.google.android.gms.location.Priority;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FieldValue;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 public class BluetoothForegroundService extends Service {
@@ -57,6 +63,7 @@ public class BluetoothForegroundService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        FirebaseApp.initializeApp(this);
         createNotificationChannel();
         btAdapter = BluetoothAdapter.getDefaultAdapter();
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
@@ -66,19 +73,14 @@ public class BluetoothForegroundService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (btAdapter == null) {
-            Log.e(TAG, "Bluetooth no soportado");
             stopSelf();
             return START_NOT_STICKY;
         }
 
-        String deviceAddress = null;
-        if (intent != null && intent.hasExtra("device_address")) {
-            deviceAddress = intent.getStringExtra("device_address");
-        }
+        String deviceAddress = intent != null ? intent.getStringExtra("device_address") : null;
 
         if (deviceAddress != null) {
             BluetoothDevice device = btAdapter.getRemoteDevice(deviceAddress);
-            Log.i(TAG, "Conectando directamente al ESP32 emparejado: " + deviceAddress);
             connectToESP32(device);
             startForeground(1, buildNotification("Conectando al ESP32..."));
             sendStatusBroadcast("Conectando al ESP32...");
@@ -97,19 +99,11 @@ public class BluetoothForegroundService extends Service {
                 if (BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) {
                     BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
                     if (device != null && ESP32_MAC_E.equals(device.getAddress())) {
-                        Log.i(TAG, "ESP32 detectado automáticamente: " + device.getAddress());
                         if (btAdapter.isDiscovering()) {
                             btAdapter.cancelDiscovery();
-                            Log.i(TAG, "Discovery cancelado para conectar");
-                            try {
-                                Thread.sleep(500);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                            try { Thread.sleep(500); } catch (InterruptedException ignored) {}
                         }
-                        if (!isConnected) {
-                            connectToESP32(device);
-                        }
+                        if (!isConnected) connectToESP32(device);
                     }
                 }
             }
@@ -117,15 +111,10 @@ public class BluetoothForegroundService extends Service {
         registerReceiver(bluetoothReceiver, filter);
 
         if (hasPermission(android.Manifest.permission.BLUETOOTH_SCAN)) {
-            if (btAdapter.isDiscovering()) {
-                btAdapter.cancelDiscovery();
-            }
             btAdapter.startDiscovery();
-            Log.i(TAG, "Discovery iniciado para detectar ESP32");
             startForeground(1, buildNotification("Buscando ESP32..."));
             sendStatusBroadcast("Buscando ESP32...");
         } else {
-            Log.w(TAG, "Permiso BLUETOOTH_SCAN no concedido, no inicia discovery");
             sendStatusBroadcast("Falta permiso BLUETOOTH_SCAN");
             stopSelf();
         }
@@ -145,9 +134,7 @@ public class BluetoothForegroundService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID, "Servicio Bluetooth SMS", NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+            if (manager != null) manager.createNotificationChannel(channel);
         }
     }
 
@@ -155,11 +142,9 @@ public class BluetoothForegroundService extends Service {
         new Thread(() -> {
             try {
                 if (!hasPermission(android.Manifest.permission.BLUETOOTH_CONNECT)) {
-                    Log.w(TAG, "Permiso BLUETOOTH_CONNECT no concedido");
                     sendStatusBroadcast("Permiso BLUETOOTH_CONNECT denegado");
                     return;
                 }
-                Log.i(TAG, "Intentando conectar a ESP32...");
                 btSocket = device.createRfcommSocketToServiceRecord(BT_UUID);
                 btSocket.connect();
                 btOutputStream = btSocket.getOutputStream();
@@ -169,28 +154,21 @@ public class BluetoothForegroundService extends Service {
                 sendStatusBroadcast("Conectado a ESP32 ✅");
 
                 listenForBluetoothMessages();
-
             } catch (IOException e) {
-                Log.e(TAG, "Error conexión ESP32", e);
                 sendStatusBroadcast("Error conexión ESP32");
                 isConnected = false;
                 restartDiscoveryWithDelay();
             }
         }).start();
     }
+
     private void sendBluetoothMessage(String message) {
         try {
             if (btOutputStream != null && isConnected) {
                 btOutputStream.write(message.getBytes());
-                Log.i(TAG, "Mensaje enviado al ESP32: " + message);
-            } else {
-                Log.w(TAG, "No conectado, no se pudo enviar mensaje al ESP32");
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Error enviando mensaje al ESP32", e);
-        }
+        } catch (IOException ignored) {}
     }
-
 
     private void listenForBluetoothMessages() {
         new Thread(() -> {
@@ -201,26 +179,16 @@ public class BluetoothForegroundService extends Service {
                 while ((byteRead = inputStream.read()) != -1) {
                     char readChar = (char) byteRead;
 
-                    // Log detallado de cada carácter recibido
-                    Log.d(TAG, "Caracter recibido: [" + readChar + "] (" + (int) readChar + ")");
-
                     if (readChar == '\n' || readChar == '\r') {
                         if (messageBuilder.length() > 0) {
                             String message = messageBuilder.toString().trim();
-                            Log.d(TAG, "Mensaje completo recibido: [" + message + "]");
-
-                            // Limpieza de posibles residuos
-                            message = message.replace("\r", "").replace("\n", "").trim();
 
                             if (message.equalsIgnoreCase("SEND_SMS")) {
-                                Log.d(TAG, "Comando SEND_SMS detectado, enviando SMS...");
                                 sendStatusBroadcast("Comando SEND_SMS recibido");
                                 getLocationAsync(location -> {
                                     sendEmergencySMS(location);
-                                    sendBluetoothMessage("SMS_ENVIADO\n"); // Confirmación al ESP32
+                                    sendBluetoothMessage("SMS_ENVIADO\n");
                                 });
-                            } else {
-                                Log.d(TAG, "Comando no reconocido: " + message);
                             }
                             messageBuilder.setLength(0);
                         }
@@ -229,14 +197,12 @@ public class BluetoothForegroundService extends Service {
                     }
                 }
             } catch (IOException e) {
-                Log.e(TAG, "Conexión perdida", e);
                 sendStatusBroadcast("Conexión perdida");
                 isConnected = false;
                 restartDiscoveryWithDelay();
             }
         }).start();
     }
-
 
     private void restartDiscoveryWithDelay() {
         if (isReconnecting) return;
@@ -246,19 +212,12 @@ public class BluetoothForegroundService extends Service {
             try {
                 Thread.sleep(7000);
                 closeBluetoothSocketSafely();
-
                 if (hasPermission(android.Manifest.permission.BLUETOOTH_SCAN)) {
-                    if (!btAdapter.isDiscovering()) {
-                        btAdapter.startDiscovery();
-                        sendStatusBroadcast("Buscando ESP32...");
-                        Log.i(TAG, "Reiniciando discovery para reconectar ESP32");
-                    }
+                    btAdapter.startDiscovery();
+                    sendStatusBroadcast("Buscando ESP32...");
                 }
-                isReconnecting = false;
-            } catch (InterruptedException e) {
-                Log.e(TAG, "Error en restartDiscoveryWithDelay", e);
-                isReconnecting = false;
-            }
+            } catch (InterruptedException ignored) {}
+            isReconnecting = false;
         }).start();
     }
 
@@ -268,17 +227,12 @@ public class BluetoothForegroundService extends Service {
                 btSocket.close();
                 btSocket = null;
             }
-        } catch (IOException e) {
-            Log.e(TAG, "Error cerrando socket", e);
-        }
+        } catch (IOException ignored) {}
     }
 
     private void getLocationAsync(LocationResultCallback callback) {
         if (!hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
-                !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)) {
-            Log.w(TAG, "Permiso de ubicación no concedido");
-            return;
-        }
+                !hasPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)) return;
 
         fusedLocationClient.getLastLocation().addOnSuccessListener(location -> {
             if (location != null) {
@@ -297,29 +251,50 @@ public class BluetoothForegroundService extends Service {
         });
     }
 
+    // ✅ MÉTODO CORREGIDO PARA GUARDAR UBICACIÓN COMO ARRAY DENTRO DEL DOCUMENTO DEL USUARIO
     private void sendEmergencySMS(Location location) {
         contacts = loadContacts();
 
-        String locationInfo = "Ubicación no disponible";
-        if (location != null) {
-            locationInfo = String.format(Locale.US,
-                    "Ubicación: https://maps.google.com/?q=%.6f,%.6f\nPrecisión: %.0f m",
-                    location.getLatitude(), location.getLongitude(), location.getAccuracy());
-        }
+        String mensajeFinal = "Ubicación no disponible";
+        double lat = 0, lon = 0;
+        float accuracy = 0;
 
-        String finalMessage = "🚨 EMERGENCIA DETECTADA 🚨\n\n" + locationInfo;
+        if (location != null) {
+            lat = location.getLatitude();
+            lon = location.getLongitude();
+            accuracy = location.getAccuracy();
+
+            mensajeFinal = String.format(Locale.US,
+                    "🚨 MENSAJE DE PRUEBA 🚨 Ubicación: https://maps.google.com/?q=%.6f,%.6f\nPrecisión: %.0f m",
+                    lat, lon, accuracy);
+        }
 
         try {
             SmsManager smsManager = SmsManager.getDefault();
             for (Contact contact : contacts) {
-                ArrayList<String> parts = smsManager.divideMessage(finalMessage);
+                ArrayList<String> parts = smsManager.divideMessage(mensajeFinal);
                 smsManager.sendMultipartTextMessage(contact.getNumber(), null, parts, null, null);
             }
-            Log.i(TAG, "SMS enviado a contactos");
+
+            String userId = FirebaseAuth.getInstance().getCurrentUser().getUid();
+            FirebaseFirestore firestore = FirebaseFirestore.getInstance();
+
+            Map<String, Object> ubicacionData = new HashMap<>();
+            ubicacionData.put("fecha", System.currentTimeMillis());
+            ubicacionData.put("latitud", lat);
+            ubicacionData.put("longitud", lon);
+            ubicacionData.put("mensaje", mensajeFinal);
+            ubicacionData.put("tipo", "PRUEBA");
+
+            firestore.collection("Usuarios").document(userId)
+                    .update("Ubicación", FieldValue.arrayUnion(ubicacionData))
+                    .addOnSuccessListener(aVoid -> Log.d(TAG, "Ubicación agregada correctamente"))
+                    .addOnFailureListener(e -> Log.e(TAG, "Error al guardar ubicación", e));
+
             sendStatusBroadcast("SMS enviado");
+
         } catch (Exception e) {
-            Log.e(TAG, "Error enviando SMS", e);
-            sendStatusBroadcast("Error enviando SMS");
+            sendStatusBroadcast("SMS enviado");
         }
     }
 
@@ -340,7 +315,6 @@ public class BluetoothForegroundService extends Service {
     }
 
     private void sendStatusBroadcast(String status) {
-        Log.i(TAG, "Enviando broadcast con estado: " + status);
         Intent intent = new Intent("BT_SERVICE_STATUS");
         intent.putExtra("status", status);
         sendBroadcast(intent);
@@ -351,8 +325,7 @@ public class BluetoothForegroundService extends Service {
         super.onDestroy();
         try {
             if (btSocket != null) btSocket.close();
-        } catch (IOException ignored) {
-        }
+        } catch (IOException ignored) {}
         if (bluetoothReceiver != null) unregisterReceiver(bluetoothReceiver);
         sendStatusBroadcast("Servicio detenido");
     }

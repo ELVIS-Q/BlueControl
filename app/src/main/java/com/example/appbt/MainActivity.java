@@ -35,8 +35,13 @@ import com.google.android.gms.location.LocationRequest;
 import com.google.android.gms.location.LocationResult;
 import com.google.android.gms.location.LocationServices;
 
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.firestore.FirebaseFirestore;
+
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public class MainActivity extends AppCompatActivity {
@@ -66,6 +71,8 @@ public class MainActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        FirebaseApp.initializeApp(this);
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this);
 
         statusText = findViewById(R.id.statusText);
@@ -146,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
         if (bluetoothAdapter != null && bluetoothAdapter.isEnabled()) {
             Set<BluetoothDevice> pairedDevices = bluetoothAdapter.getBondedDevices();
             for (BluetoothDevice device : pairedDevices) {
-                if (device.getAddress().equals("08:A6:F7:47:01:62")) { // MAC de tu ESP32
+                if (device.getAddress().equals("08:A6:F7:47:01:62")) {
                     Log.i(TAG, "ESP32 emparejado encontrado: " + device.getName());
                     Intent serviceIntent = new Intent(this, BluetoothForegroundService.class);
                     serviceIntent.putExtra("device_address", device.getAddress());
@@ -327,10 +334,30 @@ public class MainActivity extends AppCompatActivity {
                     smsManager.sendMultipartTextMessage(contact.getNumber(), null, parts, null, null);
                 }
                 Toast.makeText(this, "SMS de prueba enviado", Toast.LENGTH_SHORT).show();
+                guardarMensajeEnFirestore("PRUEBA", finalMessage, location.getLatitude(), location.getLongitude());
             } catch (Exception e) {
                 Toast.makeText(this, "Error enviando SMS: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 Log.e(TAG, "Error enviando SMS", e);
             }
         });
+    }
+
+    private void guardarMensajeEnFirestore(String tipo, String mensaje, double lat, double lon) {
+        FirebaseFirestore db = FirebaseFirestore.getInstance();
+
+        Map<String, Object> datos = new HashMap<>();
+        datos.put("tipo", tipo);
+        datos.put("mensaje", mensaje);
+        datos.put("fecha", System.currentTimeMillis());
+        datos.put("latitud", lat);
+        datos.put("longitud", lon);
+
+        db.collection("ubicacion").add(datos)
+                .addOnSuccessListener(documentReference -> {
+                    Log.d("FIREBASE", "Mensaje prueba guardado con ID: " + documentReference.getId());
+                })
+                .addOnFailureListener(e -> {
+                    Log.e("FIREBASE", "Error al guardar mensaje de prueba", e);
+                });
     }
 }
